@@ -18,10 +18,10 @@ class EfficientNetFeatureMapGetter(nn.Module):
         return out_dict
 
 
-def load_efficientnet(name,
-                      num_classes=1000,
-                      pretrained='imagenet',
-                      in_channels=3):
+def _load_efficientnet(name,
+                       num_classes=1000,
+                       pretrained='imagenet',
+                       in_channels=3):
     model = torch.hub.load(
         'lukemelas/EfficientNet-PyTorch',
         name,
@@ -32,10 +32,20 @@ def load_efficientnet(name,
     return model
 
 
+def _get_inplanes(m, feature_map_name):
+    state = m.training
+    m.eval()
+    with torch.no_grad():
+        feats = m.extract_endpoints(torch.empty(1, 3, 224, 224))
+    m.train(state)
+    return feats[feature_map_name].shape[1]
+
+
 def make_segmentation_model(name,
                             backbone_name,
                             num_classes,
                             in_channels=3,
+                            feature_map_name='reduction_5',
                             pretrained_backbone='imagenet'):
     """ Factory method. Adapted from
     https://github.com/pytorch/vision/blob/9e7a4b19e3927e0a6d6e237d7043ba904af4682e/torchvision/models/segmentation/segmentation.py
@@ -43,7 +53,7 @@ def make_segmentation_model(name,
 
     backbone_name = backbone_name.lower()
 
-    effnet = load_efficientnet(
+    effnet = _load_efficientnet(
         name=backbone_name,
         num_classes=num_classes,
         pretrained=pretrained_backbone,
@@ -51,23 +61,14 @@ def make_segmentation_model(name,
     )
 
     backbone = EfficientNetFeatureMapGetter(
-        effnet, feature_map_name='reduction_5')
+        effnet, feature_map_name=feature_map_name)
 
     model_map = {
         'deeplabv3': (DeepLabHead, DeepLabV3),
         'fcn': (FCNHead, FCN),
     }
-    inplanes = {
-        'efficientnet_b0': 1280,
-        'efficientnet_b1': 1280,
-        'efficientnet_b2': 1280 + 128,
-        'efficientnet_b3': 1280 + 256,
-        'efficientnet_b4': 1280 + 512,
-        'efficientnet_b5': 2048,
-        'efficientnet_b6': 2048 + 256,
-        'efficientnet_b7': 2048 + 512,
-    }
-    classifier = model_map[name][0](inplanes[backbone_name], num_classes)
+    inplanes = _get_inplanes(effnet, feature_map_name)
+    classifier = model_map[name][0](inplanes, num_classes)
     base_model = model_map[name][1]
 
     model = base_model(backbone, classifier)
