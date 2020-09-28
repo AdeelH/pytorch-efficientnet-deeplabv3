@@ -8,7 +8,7 @@ from torchvision.models.segmentation.fcn import (FCNHead, FCN)
 
 
 class EfficientNetFeatureMapGetter(nn.Module):
-    def __init__(self, model, feature_map_name='reduction_5', scale_factor=4):
+    def __init__(self, model, feature_map_name='reduction_5', scale_factor=1):
         super().__init__()
         self.model = model
         self.feature_map_name = feature_map_name
@@ -17,8 +17,10 @@ class EfficientNetFeatureMapGetter(nn.Module):
     def forward(self, x):
         feature_maps = self.model.extract_endpoints(x)
         feature_map = feature_maps[self.feature_map_name]
-        upsampled = F.interpolate(feature_map, scale_factor=self.scale_factor)
-        out_dict = {'out': upsampled}
+        if self.scale_factor > 1:
+            feature_map = F.interpolate(
+                feature_map, scale_factor=self.scale_factor)
+        out_dict = {'out': feature_map}
         return out_dict
 
 
@@ -49,6 +51,7 @@ def make_segmentation_model(name,
                             backbone_name,
                             num_classes,
                             in_channels=3,
+                            scale_factor=1,
                             feature_map_name='reduction_5',
                             pretrained_backbone='imagenet'):
     """ Factory method. Adapted from
@@ -65,7 +68,7 @@ def make_segmentation_model(name,
     )
 
     backbone = EfficientNetFeatureMapGetter(
-        effnet, feature_map_name=feature_map_name)
+        effnet, feature_map_name=feature_map_name, scale_factor=scale_factor)
 
     model_map = {
         'deeplabv3': (DeepLabHead, DeepLabV3),
