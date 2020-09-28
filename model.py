@@ -18,7 +18,10 @@ class EfficientNetFeatureMapGetter(nn.Module):
         return out_dict
 
 
-def load_efficientnet(name, num_classes=1000, pretrained='imagenet', in_channels=3):
+def load_efficientnet(name,
+                      num_classes=1000,
+                      pretrained='imagenet',
+                      in_channels=3):
     model = torch.hub.load(
         'lukemelas/EfficientNet-PyTorch',
         name,
