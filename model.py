@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torch.nn import functional as F
 import torch.hub
 from torchvision.models.segmentation.deeplabv3 import (
     DeepLabHead, DeepLabV3)
@@ -7,14 +8,17 @@ from torchvision.models.segmentation.fcn import (FCNHead, FCN)
 
 
 class EfficientNetFeatureMapGetter(nn.Module):
-    def __init__(self, model, feature_map_name='reduction_5'):
+    def __init__(self, model, feature_map_name='reduction_5', scale_factor=4):
         super().__init__()
         self.model = model
         self.feature_map_name = feature_map_name
+        self.scale_factor = scale_factor
 
     def forward(self, x):
         feature_maps = self.model.extract_endpoints(x)
-        out_dict = {'out': feature_maps[self.feature_map_name]}
+        feature_map = feature_maps[self.feature_map_name]
+        upsampled = F.interpolate(feature_map, scale_factor=self.scale_factor)
+        out_dict = {'out': upsampled}
         return out_dict
 
 
