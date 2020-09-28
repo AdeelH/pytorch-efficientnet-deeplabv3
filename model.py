@@ -31,6 +31,7 @@ def load_efficientnet(name, num_classes=1000, pretrained='imagenet'):
 def make_segmentation_model(name,
                             backbone_name,
                             num_classes,
+                            in_channels=3,
                             pretrained_backbone='imagenet'):
     """ Factory method. Adapted from
     https://github.com/pytorch/vision/blob/9e7a4b19e3927e0a6d6e237d7043ba904af4682e/torchvision/models/segmentation/segmentation.py
@@ -38,7 +39,12 @@ def make_segmentation_model(name,
 
     backbone_name = backbone_name.lower()
 
-    effnet = load_efficientnet(backbone_name, num_classes, pretrained_backbone)
+    effnet = load_efficientnet(
+        name=backbone_name,
+        num_classes=num_classes,
+        pretrained=pretrained_backbone,
+        in_channels=in_channels
+    )
 
     backbone = EfficientNetFeatureMapGetter(
         effnet, feature_map_name='reduction_5')
