@@ -72,13 +72,16 @@ def _load_efficientnet(name,
     return model
 
 
-def _get_inplanes(m, feature_map_name):
+def _get_inplanes(m, feature_map_name=None):
     state = m.training
     m.eval()
     with torch.no_grad():
         feats = m.extract_endpoints(torch.empty(1, 3, 224, 224))
     m.train(state)
-    return feats[feature_map_name].shape[1]
+    if feature_map_name is not None:
+        return feats[feature_map_name].shape[1]
+    return [f.shape[1] for f in feats.values()]
+
 
 
 def make_segmentation_model(name,
