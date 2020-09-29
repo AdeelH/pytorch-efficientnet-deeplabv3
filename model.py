@@ -1,3 +1,5 @@
+from functools import partial
+
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -35,13 +37,18 @@ class EfficientNetFPN(nn.Module):
         self.channel_convs = nn.ModuleList([
             nn.Conv2d(c, d, kernel_size=(1, 1)) for c in feature_map_channels
         ])
+        self.upsample_fn = partial(
+            F.interpolate,
+            scale_factor=2,
+            mode='bilinear',
+            align_corners=False
+        )
 
     def top_down(self, feature_maps):
-        out = 0.
-        for f, m in zip(reversed(feature_maps), self.channel_convs):
+        out = self.channel_convs[0](feature_maps[-1])
+        for f, m in zip(reversed(feature_maps[:-1]), self.channel_convs[1:]):
+            out = self.upsample_fn(out)
             out += m(f)
-            out = F.interpolate(
-                out, scale_factor=2, mode='bilinear', align_corners=False)
         return out
 
     def forward(self, x):
@@ -115,7 +122,7 @@ def make_segmentation_model_fpn(name,
                                 in_channels=3,
                                 pretrained_backbone='imagenet',
                                 fpn_channels=None,
-                                last_n=2):
+                                last_n=3):
     """ Factory method. Adapted from
     https://github.com/pytorch/vision/blob/9e7a4b19e3927e0a6d6e237d7043ba904af4682e/torchvision/models/segmentation/segmentation.py
     """
