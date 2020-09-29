@@ -30,25 +30,28 @@ class EfficientNetFPN(nn.Module):
     def __init__(self, model, d=256, last_n=None):
         super().__init__()
         self.model = model
-        feature_map_channels = _get_inplanes(model)[-last_n:]
+
+        feature_map_shapes = _get_shapes(model)[-last_n:]
         if last_n is not None:
-            feature_map_channels = feature_map_channels[-last_n:]
-        feature_map_channels = feature_map_channels[::-1]
-        self.channel_convs = nn.ModuleList([
+            feature_map_shapes = feature_map_shapes[-last_n:]
+        feature_map_shapes = feature_map_shapes[::-1]
+
+        feature_map_channels = [s[1] for s in feature_map_shapes]
+        self.convs = nn.ModuleList([
             nn.Conv2d(c, d, kernel_size=(1, 1)) for c in feature_map_channels
         ])
-        self.upsample_fn = partial(
-            F.interpolate,
-            scale_factor=2,
-            mode='bilinear',
-            align_corners=False
-        )
+
+        feature_map_sizes = [s[-2:] for s in feature_map_shapes[1:]]
+        self.upsamplers = [
+            partial(
+                F.interpolate, size=size, mode='bilinear', align_corners=True)
+            for size in feature_map_sizes]
 
     def top_down(self, feature_maps):
-        out = self.channel_convs[0](feature_maps[-1])
-        for f, m in zip(reversed(feature_maps[:-1]), self.channel_convs[1:]):
-            out = self.upsample_fn(out)
-            out += m(f)
+        feature_maps = feature_maps[::-1]
+        out = self.convs[0](feature_maps[0])
+        for f, m, up in zip(feature_maps[1:], self.convs[1:], self.upsamplers):
+            out = m(f) + up(out)
         return out
 
     def forward(self, x):
@@ -72,6 +75,15 @@ def _load_efficientnet(name,
     return model
 
 
+def _get_shapes(m):
+    state = m.training
+    m.eval()
+    with torch.no_grad():
+        feats = m.extract_endpoints(torch.empty(1, 3, 224, 224))
+    m.train(state)
+    return [f.shape for f in feats.values()]
+
+
 def _get_inplanes(m, feature_map_name=None):
     state = m.training
     m.eval()
@@ -81,7 +93,6 @@ def _get_inplanes(m, feature_map_name=None):
     if feature_map_name is not None:
         return feats[feature_map_name].shape[1]
     return [f.shape[1] for f in feats.values()]
-
 
 
 def make_segmentation_model(name,
