@@ -3,4 +3,4 @@
 # Optional list of dependencies required by the package
 dependencies = ['torch']
 
-from model import make_segmentation_model
+from model import *

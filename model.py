@@ -24,6 +24,33 @@ class EfficientNetFeatureMapGetter(nn.Module):
         return out_dict
 
 
+class EfficientNetFPN(nn.Module):
+    def __init__(self, model, d=256, last_n=None):
+        super().__init__()
+        self.model = model
+        feature_map_channels = _get_inplanes(model)[-last_n:]
+        if last_n is not None:
+            feature_map_channels = feature_map_channels[-last_n:]
+        feature_map_channels = feature_map_channels[::-1]
+        self.channel_convs = nn.ModuleList([
+            nn.Conv2d(c, d, kernel_size=(1, 1)) for c in feature_map_channels
+        ])
+
+    def top_down(self, feature_maps):
+        out = 0.
+        for f, m in zip(reversed(feature_maps), self.channel_convs):
+            out += m(f)
+            out = F.interpolate(
+                out, scale_factor=2, mode='bilinear', align_corners=False)
+        return out
+
+    def forward(self, x):
+        feature_maps = self.model.extract_endpoints(x)
+        out = self.top_down(list(feature_maps.values()))
+        out_dict = {'out': out}
+        return out_dict
+
+
 def _load_efficientnet(name,
                        num_classes=1000,
                        pretrained='imagenet',
@@ -76,6 +103,40 @@ def make_segmentation_model(name,
     }
     inplanes = _get_inplanes(effnet, feature_map_name)
     classifier = model_map[name][0](inplanes, num_classes)
+    base_model = model_map[name][1]
+
+    model = base_model(backbone, classifier)
+    return model
+
+
+def make_segmentation_model_fpn(name,
+                                backbone_name,
+                                num_classes,
+                                in_channels=3,
+                                pretrained_backbone='imagenet',
+                                fpn_channels=None,
+                                last_n=2):
+    """ Factory method. Adapted from
+    https://github.com/pytorch/vision/blob/9e7a4b19e3927e0a6d6e237d7043ba904af4682e/torchvision/models/segmentation/segmentation.py
+    """
+
+    backbone_name = backbone_name.lower()
+
+    effnet = _load_efficientnet(
+        name=backbone_name,
+        num_classes=num_classes,
+        pretrained=pretrained_backbone,
+        in_channels=in_channels
+    )
+
+    backbone = EfficientNetFPN(effnet, last_n=last_n, d=fpn_channels)
+
+    model_map = {
+        'deeplabv3': (DeepLabHead, DeepLabV3),
+        'fcn': (FCNHead, FCN),
+    }
+
+    classifier = model_map[name][0](fpn_channels, num_classes)
     base_model = model_map[name][1]
 
     model = base_model(backbone, classifier)
